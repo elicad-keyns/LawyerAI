@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import shutil
 from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -29,6 +30,7 @@ llm = LlamaCppAdapter(
 ask = AskLegalQuestion(embedder, store, llm, settings.top_k)
 indexer = IndexDocuments(LocalDocumentReader(), embedder, store)
 app = FastAPI(title="ПравоТруд", docs_url=None, redoc_url=None)
+logger = logging.getLogger("pravotrud")
 
 
 class ChatRequest(BaseModel):
@@ -59,6 +61,10 @@ async def chat(body: ChatRequest):
         return {"answer": answer.text, "sources": answer.sources}
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
+    except Exception as error:
+        logger.exception("Local LLM request failed")
+        message = str(error).strip() or "неизвестная ошибка"
+        raise HTTPException(500, f"Сбой локальной модели ({type(error).__name__}): {message}") from error
 
 
 @app.post("/api/index", dependencies=[Depends(authorize)])

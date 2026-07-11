@@ -41,11 +41,22 @@ class LlamaCppAdapter(LanguageModelPort):
         return self._model
 
     def answer(self, question: str, context: str) -> str:
-        prompt = ("Ты юридический помощник по трудовому праву РФ. Отвечай только по приведённым фрагментам. "
+        prefix = ("Ты юридический помощник по трудовому праву РФ. Отвечай только по приведённым фрагментам. "
                   "Если данных недостаточно, честно скажи об этом. Пиши кратко, по-русски, указывай номера статей, если они есть. "
-                  "Не выдумывай нормы. Добавь предупреждение, что ответ не заменяет консультацию юриста.\n\n"
-                  f"ФРАГМЕНТЫ:\n{context}\n\nВОПРОС: {question}\nОТВЕТ:")
-        result = self._get()(prompt, max_tokens=self._max_tokens, temperature=self._temperature, top_p=0.9, stop=["ВОПРОС:", "ФРАГМЕНТЫ:"])
+                  "Не выдумывай нормы. Добавь предупреждение, что ответ не заменяет консультацию юриста.\n\nФРАГМЕНТЫ:\n")
+        suffix = f"\n\nВОПРОС: {question}\nОТВЕТ:"
+        model = self._get()
+
+        # RAG-контекст ограничивается реальными токенами конкретной модели,
+        # чтобы prompt + ответ никогда не превышали n_ctx.
+        fixed_tokens = len(model.tokenize((prefix + suffix).encode("utf-8"), add_bos=True))
+        context_budget = self._context - self._max_tokens - fixed_tokens - 16
+        if context_budget < 64:
+            raise ValueError("LLM_CONTEXT слишком мал для вопроса и MAX_TOKENS")
+        context_tokens = model.tokenize(context.encode("utf-8"), add_bos=False)[:context_budget]
+        safe_context = model.detokenize(context_tokens).decode("utf-8", errors="ignore")
+        prompt = prefix + safe_context + suffix
+        result = model(prompt, max_tokens=self._max_tokens, temperature=self._temperature, top_p=0.9, stop=["ВОПРОС:", "ФРАГМЕНТЫ:"])
         return result["choices"][0]["text"].strip()
 
 
