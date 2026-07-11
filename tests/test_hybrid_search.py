@@ -19,3 +19,14 @@ def test_article_heading_beats_cross_reference(tmp_path):
         DocumentChunk("heading", "tk.pdf", "Статья 77. Общие основания прекращения трудового договора", (0.0, 1.0)),
     ])
     assert store.search((1.0, 0.0), 2, "Что означает статья 77?")[0].chunk.id == "heading"
+
+
+def test_instrumental_case_and_article_continuation(tmp_path):
+    store = JsonVectorStore(str(tmp_path / "index.json"))
+    store.replace([
+        DocumentChunk("wrong", "tk.pdf", "Порядок освидетельствования согласно статье 1 закона.", (1.0, 0.0)),
+        DocumentChunk("start", "tk.pdf", "Статья 1. Цели и задачи трудового законодательства", (0.0, 1.0)),
+        DocumentChunk("continuation", "tk.pdf", "Целями трудового законодательства являются установление государственных гарантий.", (0.0, 1.0)),
+    ])
+    results = store.search((1.0, 0.0), 2, "Что установлено статьёй 1 ТК РФ?")
+    assert [result.chunk.id for result in results] == ["start", "continuation"]

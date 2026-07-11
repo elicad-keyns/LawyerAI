@@ -10,7 +10,7 @@ const traceNames={
   'rag.context.prepared':'RAG-контекст подготовлен','llm.loading.started':'Начата загрузка локальной LLM в память',
   'llm.loading.completed':'Локальная LLM готова','llm.prompt.prepared':'Промпт и токен-бюджет подготовлены',
   'llm.generation.started':'Генерация токенов запущена','llm.generation.progress':'Прогресс генерации',
-  'llm.generation.completed':'Генерация токенов завершена'
+  'llm.generation.completed':'Генерация токенов завершена','llm.generation.stopped':'Генерация досрочно остановлена фильтром качества'
 };
 function formatTrace(data){const title=traceNames[data.event]||data.event,d=data.details||{};let details=Object.entries(d).map(([k,v])=>`${k}=${typeof v==='object'?JSON.stringify(v):v}`).join(' · ');return `[${data.request_id}] ${title} · +${data.elapsed_ms} мс${details?' · '+details:''}`}
 setLogs(logsEnabled.checked);logsEnabled.onchange=()=>setLogs(logsEnabled.checked);$('#collapseLogs').onclick=()=>logPanel.classList.add('collapsed');$('#expandLogs').onclick=()=>logPanel.classList.remove('collapsed');$('#clearLogs').onclick=()=>{$('#logEntries').replaceChildren();writeLog('Журнал очищен')};

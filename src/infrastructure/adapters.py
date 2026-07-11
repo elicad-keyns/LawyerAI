@@ -70,6 +70,11 @@ class LlamaCppAdapter(LanguageModelPort):
         for part in result:
             token = part["choices"][0].get("text", "")
             if token:
+                # Маленькие Qwen иногда переключаются на китайский в середине
+                # русского ответа. Завершаем поток до появления мусорного текста.
+                if re.search(r"[\u3400-\u9fff]", token):
+                    emit("llm.generation.stopped", {"reason": "unexpected_cjk_token", "tokens": tokens})
+                    break
                 tokens += 1
                 if tokens == 1 or tokens % 10 == 0:
                     emit("llm.generation.progress", {"tokens": tokens})
@@ -79,7 +84,7 @@ class LlamaCppAdapter(LanguageModelPort):
     def _prepare_prompt(self, question: str, context: str, on_event=None) -> str:
         system = ("Ты помощник по Трудовому кодексу РФ. Отвечай строго по предоставленному контексту на русском языке. "
                   "Не придумывай факты. Не пиши слова «ОТВЕТ», «ПРОБЛЕМА», предупреждения или дисклеймеры. "
-                  "Не повторяй текст. Если спрашивают конкретную статью, используй прежде всего фрагмент, начинающийся с её заголовка, "
+                  "Не повторяй текст и не используй китайские иероглифы. Если спрашивают конкретную статью, используй прежде всего фрагмент, начинающийся с её заголовка, "
                   "и не подменяй содержание случайными ссылками на эту статью. Дай прямой краткий ответ простым языком.")
         prefix = f"<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\nКонтекст из ТК РФ:\n"
         suffix = f"\n\nВопрос пользователя: {question}<|im_end|>\n<|im_start|>assistant\n"
@@ -148,10 +153,13 @@ class JsonVectorStore(VectorStorePort):
         # Номера статей — идентификаторы, а не семантика. Эмбеддинги могут
         # считать статьи 77 и 87 похожими, поэтому точный номер получает
         # приоритет над векторной близостью.
-        article_match = re.search(r"(?i)стат(?:ья|ьи|ью|ье|ей)\s*[№N]?\s*(\d+(?:\.\d+)?)", query)
+        article_match = re.search(r"(?i)стат(?:ья|ьи|ью|ье|ьей|ьёй|ей)\s*[№N]?\s*(\d+(?:\.\d+)?)", query)
         article = article_match.group(1) if article_match else ""
         article_pattern = re.compile(rf"(?i)стат(?:ья|ьи|ью|ье|ей)\s*[№N]?\s*{re.escape(article)}(?!\d|\.\d)") if article else None
-        article_heading_pattern = re.compile(rf"(?i)(?:^|[.!?]\s+)статья\s+{re.escape(article)}\s*[.\s]", re.MULTILINE) if article else None
+        # В PDF заголовок часто идёт сразу после названия главы без точки:
+        # «Глава 13... Статья 77». Заглавная «Статья» отличает заголовок от
+        # обычных ссылок вида «согласно статье 77».
+        article_heading_pattern = re.compile(rf"(?:^|\s)Статья\s+{re.escape(article)}\s*[.\s]", re.MULTILINE) if article else None
         query_words = {w for w in re.findall(r"[а-яёa-z]{4,}", query.lower()) if w not in {"какой", "какая", "какие", "статья"}}
 
         def hybrid_score(chunk: DocumentChunk) -> float:
@@ -167,6 +175,15 @@ class JsonVectorStore(VectorStorePort):
             return score
 
         ranked = sorted((SearchResult(c, hybrid_score(c)) for c in self._chunks), key=lambda r: r.score, reverse=True)
+
+        # Для запроса конкретной статьи возвращаем её начало и следующие
+        # последовательные фрагменты. Так длинные статьи не обрываются после
+        # первого чанка и не заменяются случайными перекрёстными ссылками.
+        if article_heading_pattern:
+            heading_index = next((i for i, chunk in enumerate(self._chunks) if article_heading_pattern.search(chunk.text)), None)
+            if heading_index is not None:
+                section = self._chunks[heading_index:heading_index + limit]
+                return [SearchResult(chunk, 20.0 - offset) for offset, chunk in enumerate(section)]
         return ranked[:limit]
 
     def count(self) -> int:
