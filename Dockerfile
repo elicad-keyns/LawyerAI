@@ -7,7 +7,7 @@ RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 # Модель встраивается в образ на этапе сборки. Railway не нужно скачивать её
 # при первом пользовательском запросе. URL можно заменить через Docker build arg.
-ARG MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true"
+ARG MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf?download=true"
 RUN mkdir -p /bundled-model \
     && curl --fail --location --retry 5 --retry-delay 5 \
        --output /bundled-model/model.gguf "$MODEL_URL" \

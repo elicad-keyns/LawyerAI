@@ -1,6 +1,7 @@
 import json
 import math
 import re
+from collections import Counter
 from time import perf_counter
 from pathlib import Path
 from threading import Lock
@@ -85,7 +86,8 @@ class LlamaCppAdapter(LanguageModelPort):
         system = ("Ты помощник по Трудовому кодексу РФ. Отвечай строго по предоставленному контексту на русском языке. "
                   "Не придумывай факты. Не пиши слова «ОТВЕТ», «ПРОБЛЕМА», предупреждения или дисклеймеры. "
                   "Не повторяй текст и не используй китайские иероглифы. Если спрашивают конкретную статью, используй прежде всего фрагмент, начинающийся с её заголовка, "
-                  "и не подменяй содержание случайными ссылками на эту статью. Дай прямой краткий ответ простым языком.")
+                  "и не подменяй содержание случайными ссылками на эту статью. Называй номер статьи только тогда, когда он явно присутствует в контексте. "
+                  "Не перечисляй статьи, которых нет в контексте. Дай прямой краткий ответ простым языком.")
         prefix = f"<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\nКонтекст из ТК РФ:\n"
         suffix = f"\n\nВопрос пользователя: {question}<|im_end|>\n<|im_start|>assistant\n"
         model = self._get()
@@ -108,7 +110,7 @@ class LlamaCppAdapter(LanguageModelPort):
             temperature=self._temperature,
             top_p=0.9,
             repeat_penalty=1.18,
-            stop=["<|im_end|>", "<|im_start|>", "ПРОБЛЕМА:", "ОТВЕТ:", "Предупреждение:", "Disclaimer:"],
+            stop=["<|im_end|>", "<|im_start|>", "ПРОБЛЕМА:", "ОТВЕТ:", "Вопрос пользователя:", "Результат ответа:", "Предупреждение:", "Disclaimer:"],
         )
 
     @staticmethod
@@ -160,21 +162,44 @@ class JsonVectorStore(VectorStorePort, ArticleRepositoryPort):
         # «Глава 13... Статья 77». Заглавная «Статья» отличает заголовок от
         # обычных ссылок вида «согласно статье 77».
         article_heading_pattern = re.compile(rf"(?:^|\s)Статья\s+{re.escape(article)}\s*[.\s]", re.MULTILINE) if article else None
-        query_words = {w for w in re.findall(r"[а-яёa-z]{4,}", query.lower()) if w not in {"какой", "какая", "какие", "статья"}}
+        def tokenize(text: str) -> list[str]:
+            return re.findall(r"[а-яa-z0-9]{3,}", text.lower().replace("ё", "е"))
 
-        def hybrid_score(chunk: DocumentChunk) -> float:
+        # Универсальный BM25: никаких тематических словарей и ручных фраз.
+        query_tokens = tokenize(query)
+        document_tokens = [tokenize(chunk.text) for chunk in self._chunks]
+        document_frequencies = Counter()
+        for tokens in document_tokens:
+            document_frequencies.update(set(tokens))
+        document_count = max(len(document_tokens), 1)
+        average_length = sum(map(len, document_tokens)) / document_count or 1.0
+        k1, b = 1.5, 0.75
+
+        bm25_scores: list[float] = []
+        for tokens in document_tokens:
+            frequencies = Counter(tokens)
+            length_factor = k1 * (1 - b + b * len(tokens) / average_length)
+            score = 0.0
+            for token in query_tokens:
+                frequency = frequencies[token]
+                if not frequency:
+                    continue
+                df = document_frequencies[token]
+                idf = math.log(1 + (document_count - df + 0.5) / (df + 0.5))
+                score += idf * frequency * (k1 + 1) / (frequency + length_factor)
+            bm25_scores.append(score)
+        max_bm25 = max(bm25_scores, default=0.0) or 1.0
+
+        def hybrid_score(chunk: DocumentChunk, index: int) -> float:
             score = cosine(vector, chunk.embedding)
-            normalized_text = chunk.text.lower().replace("ё", "е")
+            score += 0.65 * bm25_scores[index] / max_bm25
             if article_heading_pattern and article_heading_pattern.search(chunk.text):
                 score += 10.0
             elif article_pattern and article_pattern.search(chunk.text):
                 score += 1.5
-            if query_words:
-                matches = sum(word.replace("ё", "е") in normalized_text for word in query_words)
-                score += 0.25 * matches / len(query_words)
             return score
 
-        ranked = sorted((SearchResult(c, hybrid_score(c)) for c in self._chunks), key=lambda r: r.score, reverse=True)
+        ranked = sorted((SearchResult(chunk, hybrid_score(chunk, index)) for index, chunk in enumerate(self._chunks)), key=lambda r: r.score, reverse=True)
 
         # Для запроса конкретной статьи возвращаем её начало и следующие
         # последовательные фрагменты. Так длинные статьи не обрываются после

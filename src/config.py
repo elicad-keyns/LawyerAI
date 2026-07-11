@@ -6,9 +6,9 @@ from dataclasses import dataclass
 class Settings:
     access_key: str = os.getenv("ACCESS_KEY", "")
     data_dir: str = os.getenv("DATA_DIR", "data")
-    model_repo: str = os.getenv("MODEL_REPO", "Qwen/Qwen2.5-0.5B-Instruct-GGUF")
-    model_file: str = os.getenv("MODEL_FILE", "qwen2.5-0.5b-instruct-q4_k_m.gguf")
-    model_path: str = os.getenv("MODEL_PATH", "data/models/qwen2.5-0.5b-instruct-q4_k_m.gguf")
+    model_repo: str = os.getenv("MODEL_REPO", "Qwen/Qwen2.5-1.5B-Instruct-GGUF")
+    model_file: str = os.getenv("MODEL_FILE", "qwen2.5-1.5b-instruct-q4_k_m.gguf")
+    model_path: str = os.getenv("MODEL_PATH", "data/models/qwen2.5-1.5b-instruct-q4_k_m.gguf")
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     embedding_cache_dir: str = os.getenv("EMBEDDING_CACHE_DIR", "data/models/fastembed")
     threads: int = int(os.getenv("LLM_THREADS", "8"))

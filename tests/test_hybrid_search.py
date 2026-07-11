@@ -30,3 +30,13 @@ def test_instrumental_case_and_article_continuation(tmp_path):
     ])
     results = store.search((1.0, 0.0), 2, "Что установлено статьёй 1 ТК РФ?")
     assert [result.chunk.id for result in results] == ["start", "continuation"]
+
+
+def test_bm25_is_generic_and_not_topic_specific(tmp_path):
+    store = JsonVectorStore(str(tmp_path / "index.json"))
+    store.replace([
+        DocumentChunk("semantic", "tk.pdf", "Общие положения трудового законодательства", (1.0, 0.0)),
+        DocumentChunk("lexical", "tk.pdf", "Ежегодный оплачиваемый отпуск предоставляется работникам", (0.7, 0.3)),
+    ])
+    results = store.search((1.0, 0.0), 2, "ежегодный оплачиваемый отпуск")
+    assert results[0].chunk.id == "lexical"

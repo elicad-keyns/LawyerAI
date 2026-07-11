@@ -32,17 +32,13 @@ class AskLegalQuestion:
                 return iter([formatted]), (source,)
             emit("article.lookup.missed", {"number": number})
         search_query = question
-        normalized = question.lower()
-        if "уволиться" in normalized or "собственн" in normalized:
-            search_query += " Расторжение трудового договора по инициативе работника статья 80 увольнение по собственному желанию"
-            emit("rag.query.expanded", {"reason": "синонимы увольнения", "added_characters": len(search_query) - len(question)})
         started = perf_counter()
         emit("rag.embedding.started", {"model_input_characters": len(search_query)})
         vector = self._embedder.embed([f"query: {search_query}"])[0]
         emit("rag.embedding.completed", {"duration_ms": round((perf_counter() - started) * 1000), "dimensions": len(vector)})
         started = perf_counter()
         emit("rag.search.started", {"top_k": self._top_k, "indexed_chunks": self._store.count()})
-        results = self._store.search(vector, self._top_k, question)
+        results = self._store.search(vector, self._top_k, search_query)
         emit("rag.search.completed", {
             "duration_ms": round((perf_counter() - started) * 1000),
             "results": [{"source": r.chunk.source, "score": round(r.score, 4), "characters": len(r.chunk.text)} for r in results],
@@ -58,6 +54,7 @@ class AskLegalQuestion:
     def _format_article(text: str) -> str:
         text = re.sub(r"\s+(\d+)\)\s+", r"\n\1) ", text).strip()
         return text
+
 
 
 class IndexDocuments:
