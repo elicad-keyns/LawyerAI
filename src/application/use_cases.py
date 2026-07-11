@@ -11,8 +11,12 @@ class AskLegalQuestion:
         question = question.strip()
         if not question:
             raise ValueError("Вопрос не может быть пустым")
-        vector = self._embedder.embed([f"query: {question}"])[0]
-        results = self._store.search(vector, self._top_k)
+        search_query = question
+        normalized = question.lower()
+        if "уволиться" in normalized or "собственн" in normalized:
+            search_query += " Расторжение трудового договора по инициативе работника статья 80 увольнение по собственному желанию"
+        vector = self._embedder.embed([f"query: {search_query}"])[0]
+        results = self._store.search(vector, self._top_k, question)
         if not results:
             return ChatAnswer("База ТК РФ пока не проиндексирована. Добавьте документы в папку documents.", ())
         context = "\n\n".join(f"[{i + 1}] {r.chunk.source}\n{r.chunk.text}" for i, r in enumerate(results))
@@ -49,4 +53,3 @@ class IndexDocuments:
             parts.append(text[start:end].strip())
             start = max(end - self._overlap, start + 1)
         return [p for p in parts if len(p) > 80]
-

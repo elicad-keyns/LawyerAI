@@ -11,7 +11,7 @@ from src.config import Settings
 from src.infrastructure.adapters import FastEmbedAdapter, JsonVectorStore, LlamaCppAdapter, LocalDocumentReader
 
 settings = Settings()
-embedder = FastEmbedAdapter(settings.embedding_model)
+embedder = FastEmbedAdapter(settings.embedding_model, settings.embedding_cache_dir)
 runtime_index = Path(settings.data_dir) / "index" / "chunks.json"
 bundled_index = Path("artifacts/index/chunks.json")
 if not runtime_index.exists() and bundled_index.exists():

@@ -12,3 +12,9 @@ def test_llm_adapter_limits_rag_context():
     adapter._model = fake
     assert adapter.answer("вопрос", "контекст" * 500) == "ответ"
     assert len(fake.prompt.encode()) <= 1100
+
+
+def test_llm_adapter_removes_repeated_disclaimer():
+    from src.infrastructure.adapters import LlamaCppAdapter
+    text = "Применяется статья 80.\n\nПрименяется статья 80.\n\nПредупреждение: Ответ не заменяет консультацию."
+    assert LlamaCppAdapter._remove_repetitions(text) == "Применяется статья 80."

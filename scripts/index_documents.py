@@ -24,7 +24,7 @@ def main() -> None:
     settings = Settings()
     use_case = IndexDocuments(
         LocalDocumentReader(),
-        FastEmbedAdapter(settings.embedding_model),
+        FastEmbedAdapter(settings.embedding_model, settings.embedding_cache_dir),
         JsonVectorStore(args.output),
     )
     count = use_case.execute(paths)
@@ -34,4 +34,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
