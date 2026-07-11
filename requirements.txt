@@ -1,0 +1,8 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+llama-cpp-python==0.3.9
+fastembed==0.6.1
+huggingface-hub==0.30.2
+pypdf==5.4.0
+python-multipart==0.0.20
+

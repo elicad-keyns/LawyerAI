@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Локальный ИИ-помощник по Трудовому кодексу РФ">
+  <title>ПравоТруд — помощник по ТК РФ</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="chat" aria-label="Чат с помощником">
+      <header>
+        <div class="mark">ПТ</div>
+        <div><h1>ПравоТруд</h1><p><span class="dot"></span> Локальный помощник по ТК РФ</p></div>
+        <button id="settingsBtn" class="icon-btn" aria-label="Открыть настройки" title="Настройки">⚙</button>
+      </header>
+      <div id="messages" class="messages" aria-live="polite">
+        <div class="welcome">
+          <div class="book">§</div>
+          <h2>Разберёмся в трудовом праве</h2>
+          <p>Задайте вопрос по ТК РФ. Ответ будет составлен на основе загруженной редакции кодекса.</p>
+          <div class="suggestions">
+            <button>Как оплачивается сверхурочная работа?</button>
+            <button>Когда работодатель может уволить сотрудника?</button>
+            <button>Сколько дней длится ежегодный отпуск?</button>
+          </div>
+        </div>
+      </div>
+      <form id="chatForm" class="composer">
+        <textarea id="input" rows="1" maxlength="2000" placeholder="Задайте вопрос по трудовому праву…" aria-label="Сообщение"></textarea>
+        <button id="sendBtn" type="submit" aria-label="Отправить">↑</button>
+      </form>
+      <p class="disclaimer">Ответы носят справочный характер и не заменяют консультацию юриста</p>
+    </section>
+  </main>
+  <dialog id="settings">
+    <form method="dialog" class="modal">
+      <div class="modal-head"><div><h2>Настройки доступа</h2><p>Ключ хранится только в вашем браузере</p></div><button value="cancel" aria-label="Закрыть">×</button></div>
+      <label for="key">Ключ доступа</label>
+      <div class="key-row"><input id="key" type="password" autocomplete="current-password" placeholder="Введите ключ из Railway"><button id="toggle" type="button" aria-label="Показать ключ">◉</button></div>
+      <p id="keyStatus" class="status"></p>
+      <button id="saveKey" type="button" class="primary">Сохранить и проверить</button>
+    </form>
+  </dialog>
+  <script src="/assets/app.js" defer></script>
+</body></html>
+

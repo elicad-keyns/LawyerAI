@@ -1,0 +1,12 @@
+const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), form=$('#chatForm'), settings=$('#settings'), keyInput=$('#key');
+keyInput.value=localStorage.getItem('accessKey')||'';
+$('#settingsBtn').onclick=()=>settings.showModal();
+$('#toggle').onclick=()=>keyInput.type=keyInput.type==='password'?'text':'password';
+$('#saveKey').onclick=async()=>{const status=$('#keyStatus'),key=keyInput.value.trim();status.className='status';status.textContent='Проверяю…';try{const r=await fetch('/api/auth',{method:'POST',headers:{'X-Access-Key':key}});if(!r.ok)throw new Error((await r.json()).detail);localStorage.setItem('accessKey',key);status.classList.add('ok');status.textContent='Ключ принят';setTimeout(()=>settings.close(),500)}catch(e){status.classList.add('bad');status.textContent=e.message||'Не удалось проверить ключ'}};
+document.querySelectorAll('.suggestions button').forEach(b=>b.onclick=()=>{input.value=b.textContent;input.focus()});
+input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,130)+'px'});
+input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
+function add(text,type,sources=[]){document.querySelector('.welcome')?.remove();const el=document.createElement('div');el.className=`message ${type}`;el.textContent=text;if(sources.length){const s=document.createElement('small');s.className='sources';s.textContent='Источники: '+sources.join(' · ');el.appendChild(s)}messages.appendChild(el);messages.scrollTop=messages.scrollHeight;return el}
+form.onsubmit=async e=>{e.preventDefault();const text=input.value.trim(),key=localStorage.getItem('accessKey');if(!text)return;if(!key){settings.showModal();return}add(text,'user');input.value='';input.style.height='auto';const pending=add('Изучаю положения кодекса…','bot typing');$('#sendBtn').disabled=true;try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','X-Access-Key':key},body:JSON.stringify({message:text})});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Ошибка сервера');pending.remove();add(data.answer,'bot',data.sources)}catch(err){pending.textContent=err.message+(err.message.includes('ключ')?' — откройте настройки.':'')}finally{$('#sendBtn').disabled=false;input.focus()}};
+if(!localStorage.getItem('accessKey'))setTimeout(()=>settings.showModal(),350);
+
