@@ -1,5 +1,5 @@
 FROM python:3.11-slim-bookworm AS builder
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake git curl ca-certificates libopenblas-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake git curl ca-certificates pkg-config libopenblas-dev && rm -rf /var/lib/apt/lists/*
 ENV CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS" CMAKE_BUILD_PARALLEL_LEVEL=8
 WORKDIR /app
 COPY requirements.txt .
