@@ -8,6 +8,7 @@ const traceNames={
   'rag.embedding.started':'Начато построение эмбеддинга','rag.embedding.completed':'Эмбеддинг построен',
   'rag.search.started':'Запущен гибридный поиск по индексу','rag.search.completed':'Поиск по индексу завершён',
   'rag.context.prepared':'RAG-контекст подготовлен','llm.loading.started':'Начата загрузка локальной LLM в память',
+  'article.lookup.started':'Запущено точное извлечение статьи','article.lookup.completed':'Статья извлечена дословно без LLM','article.lookup.missed':'Точный текст статьи не найден, используется RAG',
   'llm.loading.completed':'Локальная LLM готова','llm.prompt.prepared':'Промпт и токен-бюджет подготовлены',
   'llm.generation.started':'Генерация токенов запущена','llm.generation.progress':'Прогресс генерации',
   'llm.generation.completed':'Генерация токенов завершена','llm.generation.stopped':'Генерация досрочно остановлена фильтром качества'

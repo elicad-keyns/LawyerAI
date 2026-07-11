@@ -29,6 +29,11 @@ class VectorStorePort(ABC):
     def count(self) -> int: ...
 
 
+class ArticleRepositoryPort(ABC):
+    @abstractmethod
+    def find_article(self, number: str): ...
+
+
 class DocumentReaderPort(ABC):
     @abstractmethod
     def read(self, path: str) -> str: ...

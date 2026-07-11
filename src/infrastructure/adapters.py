@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Lock
 from collections.abc import Iterable, Sequence
 from typing import Optional
-from src.application.ports import DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
+from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
 from src.domain.entities import DocumentChunk, SearchResult
 
 
@@ -126,7 +126,7 @@ class LlamaCppAdapter(LanguageModelPort):
         return "\n\n".join(unique).strip()
 
 
-class JsonVectorStore(VectorStorePort):
+class JsonVectorStore(VectorStorePort, ArticleRepositoryPort):
     def __init__(self, path: str):
         self._path, self._chunks, self._lock = Path(path), [], Lock()
         self._load()
@@ -188,6 +188,39 @@ class JsonVectorStore(VectorStorePort):
 
     def count(self) -> int:
         return len(self._chunks)
+
+    def find_article(self, number: str):
+        """Восстанавливает документ из перекрывающихся чанков и извлекает статью дословно."""
+        sources: dict[str, list[DocumentChunk]] = {}
+        for chunk in self._chunks:
+            base_source = re.sub(r",\s*фрагмент\s+\d+$", "", chunk.source, flags=re.IGNORECASE)
+            sources.setdefault(base_source, []).append(chunk)
+
+        heading = re.compile(rf"(?:^|\s)(Статья\s+{re.escape(number)}(?!\d|\.\d)\s*\.)")
+        next_heading = re.compile(r"\sСтатья\s+\d+(?:\.\d+)?\s*\.")
+        for source, chunks in sources.items():
+            document = self._join_overlapping_chunks([chunk.text for chunk in chunks])
+            match = heading.search(document)
+            if not match:
+                continue
+            start = match.start(1)
+            following = next_heading.search(document, match.end(1))
+            end = following.start() if following else len(document)
+            article = document[start:end].strip()
+            if article:
+                return source, article
+        return None
+
+    @staticmethod
+    def _join_overlapping_chunks(parts: list[str]) -> str:
+        if not parts:
+            return ""
+        result = parts[0]
+        for part in parts[1:]:
+            max_overlap = min(240, len(result), len(part))
+            overlap = next((size for size in range(max_overlap, 30, -1) if result.endswith(part[:size])), 0)
+            result += part[overlap:]
+        return result
 
 
 class LocalDocumentReader(DocumentReaderPort):

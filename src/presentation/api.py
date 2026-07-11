@@ -33,7 +33,7 @@ llm = LlamaCppAdapter(
     settings.temperature,
     settings.batch,
 )
-ask = AskLegalQuestion(embedder, store, llm, settings.top_k)
+ask = AskLegalQuestion(embedder, store, llm, settings.top_k, store)
 indexer = IndexDocuments(LocalDocumentReader(), embedder, store)
 app = FastAPI(title="ПравоТруд", docs_url=None, redoc_url=None)
 logger = logging.getLogger("pravotrud")

@@ -1,12 +1,14 @@
 from pathlib import Path
+import re
 from time import perf_counter
-from src.application.ports import DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
+from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
 from src.domain.entities import ChatAnswer, DocumentChunk
 
 
 class AskLegalQuestion:
-    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5):
+    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5, articles: ArticleRepositoryPort = None):
         self._embedder, self._store, self._llm, self._top_k = embedder, store, llm, top_k
+        self._articles = articles
 
     def execute(self, question: str) -> ChatAnswer:
         stream, sources = self.execute_stream(question)
@@ -18,6 +20,17 @@ class AskLegalQuestion:
         if not question:
             raise ValueError("Вопрос не может быть пустым")
         emit("rag.question.validated", {"characters": len(question)})
+        article_numbers = re.findall(r"(?i)стат(?:ья|ьи|ью|ье|ьей|ьёй|ей)\s*[№N]?\s*(\d+(?:\.\d+)?)", question)
+        if self._articles and len(set(article_numbers)) == 1:
+            number = article_numbers[0]
+            emit("article.lookup.started", {"number": number})
+            article = self._articles.find_article(number)
+            if article:
+                source, text = article
+                formatted = self._format_article(text)
+                emit("article.lookup.completed", {"number": number, "characters": len(formatted), "mode": "verbatim_without_llm"})
+                return iter([formatted]), (source,)
+            emit("article.lookup.missed", {"number": number})
         search_query = question
         normalized = question.lower()
         if "уволиться" in normalized or "собственн" in normalized:
@@ -40,6 +53,11 @@ class AskLegalQuestion:
         sources = tuple(dict.fromkeys(r.chunk.source for r in results))
         emit("rag.context.prepared", {"characters": len(context), "sources": len(sources)})
         return self._llm.stream_answer(question, context, emit), sources
+
+    @staticmethod
+    def _format_article(text: str) -> str:
+        text = re.sub(r"\s+(\d+)\)\s+", r"\n\1) ", text).strip()
+        return text
 
 
 class IndexDocuments:
