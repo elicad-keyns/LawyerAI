@@ -77,11 +77,12 @@ class LlamaCppAdapter(LanguageModelPort):
         emit("llm.generation.completed", {"tokens": tokens})
 
     def _prepare_prompt(self, question: str, context: str, on_event=None) -> str:
-        prefix = ("Ты юридический помощник по трудовому праву РФ. Отвечай только по приведённым фрагментам. "
-                  "Если данных недостаточно, честно скажи об этом. Пиши кратко, по-русски, указывай номера статей, если они есть. "
-                  "Не выдумывай нормы. Не добавляй предупреждений, оговорок и дисклеймеров. Не повторяй предложения и абзацы. "
-                  "Сначала дай прямой ответ, затем при необходимости перечисли основания кратким списком.\n\nФРАГМЕНТЫ:\n")
-        suffix = f"\n\nВОПРОС: {question}\nОТВЕТ:"
+        system = ("Ты помощник по Трудовому кодексу РФ. Отвечай строго по предоставленному контексту на русском языке. "
+                  "Не придумывай факты. Не пиши слова «ОТВЕТ», «ПРОБЛЕМА», предупреждения или дисклеймеры. "
+                  "Не повторяй текст. Если спрашивают конкретную статью, используй прежде всего фрагмент, начинающийся с её заголовка, "
+                  "и не подменяй содержание случайными ссылками на эту статью. Дай прямой краткий ответ простым языком.")
+        prefix = f"<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\nКонтекст из ТК РФ:\n"
+        suffix = f"\n\nВопрос пользователя: {question}<|im_end|>\n<|im_start|>assistant\n"
         model = self._get()
 
         # RAG-контекст ограничивается реальными токенами конкретной модели,
@@ -102,13 +103,13 @@ class LlamaCppAdapter(LanguageModelPort):
             temperature=self._temperature,
             top_p=0.9,
             repeat_penalty=1.18,
-            stop=["ВОПРОС:", "ФРАГМЕНТЫ:", "Предупреждение:", "Disclaimer:"],
+            stop=["<|im_end|>", "<|im_start|>", "ПРОБЛЕМА:", "ОТВЕТ:", "Предупреждение:", "Disclaimer:"],
         )
 
     @staticmethod
     def _remove_repetitions(text: str) -> str:
         """Удаляет повторные абзацы и типовые дисклеймеры слабых моделей."""
-        text = re.split(r"(?i)предупреждение\s*:|ответ не заменяет консультацию|disclaimer\s*:", text, maxsplit=1)[0]
+        text = re.split(r"(?i)предупреждение\s*:|ответ не заменяет консультацию|disclaimer\s*:|проблема\s*:|ответ\s*:", text, maxsplit=1)[0]
         paragraphs = re.split(r"\n\s*\n", text.strip())
         unique: list[str] = []
         seen: set[str] = set()
@@ -150,13 +151,16 @@ class JsonVectorStore(VectorStorePort):
         article_match = re.search(r"(?i)стат(?:ья|ьи|ью|ье|ей)\s*[№N]?\s*(\d+(?:\.\d+)?)", query)
         article = article_match.group(1) if article_match else ""
         article_pattern = re.compile(rf"(?i)стат(?:ья|ьи|ью|ье|ей)\s*[№N]?\s*{re.escape(article)}(?!\d|\.\d)") if article else None
+        article_heading_pattern = re.compile(rf"(?i)(?:^|[.!?]\s+)статья\s+{re.escape(article)}\s*[.\s]", re.MULTILINE) if article else None
         query_words = {w for w in re.findall(r"[а-яёa-z]{4,}", query.lower()) if w not in {"какой", "какая", "какие", "статья"}}
 
         def hybrid_score(chunk: DocumentChunk) -> float:
             score = cosine(vector, chunk.embedding)
             normalized_text = chunk.text.lower().replace("ё", "е")
-            if article_pattern and article_pattern.search(chunk.text):
-                score += 3.0
+            if article_heading_pattern and article_heading_pattern.search(chunk.text):
+                score += 10.0
+            elif article_pattern and article_pattern.search(chunk.text):
+                score += 1.5
             if query_words:
                 matches = sum(word.replace("ё", "е") in normalized_text for word in query_words)
                 score += 0.25 * matches / len(query_words)

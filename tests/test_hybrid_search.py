@@ -10,3 +10,12 @@ def test_exact_article_number_beats_semantic_similarity(tmp_path):
     ])
     results = store.search((1.0, 0.0), 2, "Статья 77 ТК РФ")
     assert results[0].chunk.id == "right"
+
+
+def test_article_heading_beats_cross_reference(tmp_path):
+    store = JsonVectorStore(str(tmp_path / "index.json"))
+    store.replace([
+        DocumentChunk("reference", "tk.pdf", "Увольнение осуществляется по основаниям статьи 77 настоящего Кодекса.", (1.0, 0.0)),
+        DocumentChunk("heading", "tk.pdf", "Статья 77. Общие основания прекращения трудового договора", (0.0, 1.0)),
+    ])
+    assert store.search((1.0, 0.0), 2, "Что означает статья 77?")[0].chunk.id == "heading"
