@@ -1,15 +1,17 @@
 import json
 import math
 import re
+from time import perf_counter
 from pathlib import Path
 from threading import Lock
 from collections.abc import Iterable, Sequence
+from typing import Optional
 from src.application.ports import DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
 from src.domain.entities import DocumentChunk, SearchResult
 
 
 class FastEmbedAdapter(EmbeddingPort):
-    def __init__(self, model_name: str, cache_dir: str | None = None):
+    def __init__(self, model_name: str, cache_dir: Optional[str] = None):
         self._model_name, self._cache_dir, self._model = model_name, cache_dir, None
         self._lock = Lock()
 
@@ -25,9 +27,9 @@ class FastEmbedAdapter(EmbeddingPort):
 
 
 class LlamaCppAdapter(LanguageModelPort):
-    def __init__(self, model_path: str, repo: str, filename: str, threads: int, context: int, max_tokens: int, temperature: float):
+    def __init__(self, model_path: str, repo: str, filename: str, threads: int, context: int, max_tokens: int, temperature: float, batch: int = 512):
         self._path, self._repo, self._filename = Path(model_path), repo, filename
-        self._threads, self._context, self._max_tokens, self._temperature = threads, context, max_tokens, temperature
+        self._threads, self._context, self._max_tokens, self._temperature, self._batch = threads, context, max_tokens, temperature, batch
         self._model, self._lock = None, Lock()
 
     def _get(self):
@@ -38,22 +40,43 @@ class LlamaCppAdapter(LanguageModelPort):
                     downloaded = hf_hub_download(self._repo, self._filename, local_dir=self._path.parent)
                     Path(downloaded).replace(self._path)
                 from llama_cpp import Llama
-                self._model = Llama(model_path=str(self._path), n_ctx=self._context, n_threads=self._threads, n_batch=128, verbose=False)
+                self._model = Llama(
+                    model_path=str(self._path),
+                    n_ctx=self._context,
+                    n_threads=self._threads,
+                    n_threads_batch=self._threads,
+                    n_batch=self._batch,
+                    use_mmap=True,
+                    use_mlock=False,
+                    verbose=False,
+                )
         return self._model
 
     def answer(self, question: str, context: str) -> str:
         result = self._get()(self._prepare_prompt(question, context), **self._generation_options())
         return self._remove_repetitions(result["choices"][0]["text"])
 
-    def stream_answer(self, question: str, context: str):
+    def stream_answer(self, question: str, context: str, on_event=None):
+        emit = on_event or (lambda *_: None)
+        started = perf_counter()
+        emit("llm.loading.started", {"model": self._path.name, "threads": self._threads, "batch": self._batch, "context_window": self._context})
         model = self._get()
-        result = model(self._prepare_prompt(question, context), stream=True, **self._generation_options())
+        emit("llm.loading.completed", {"duration_ms": round((perf_counter() - started) * 1000)})
+        prompt = self._prepare_prompt(question, context, emit)
+        options = self._generation_options()
+        emit("llm.generation.started", {"max_tokens": self._max_tokens, "temperature": self._temperature, "repeat_penalty": options["repeat_penalty"]})
+        result = model(prompt, stream=True, **options)
+        tokens = 0
         for part in result:
             token = part["choices"][0].get("text", "")
             if token:
+                tokens += 1
+                if tokens == 1 or tokens % 10 == 0:
+                    emit("llm.generation.progress", {"tokens": tokens})
                 yield token
+        emit("llm.generation.completed", {"tokens": tokens})
 
-    def _prepare_prompt(self, question: str, context: str) -> str:
+    def _prepare_prompt(self, question: str, context: str, on_event=None) -> str:
         prefix = ("Ты юридический помощник по трудовому праву РФ. Отвечай только по приведённым фрагментам. "
                   "Если данных недостаточно, честно скажи об этом. Пиши кратко, по-русски, указывай номера статей, если они есть. "
                   "Не выдумывай нормы. Не добавляй предупреждений, оговорок и дисклеймеров. Не повторяй предложения и абзацы. "
@@ -69,6 +92,8 @@ class LlamaCppAdapter(LanguageModelPort):
             raise ValueError("LLM_CONTEXT слишком мал для вопроса и MAX_TOKENS")
         context_tokens = model.tokenize(context.encode("utf-8"), add_bos=False)[:context_budget]
         safe_context = model.detokenize(context_tokens).decode("utf-8", errors="ignore")
+        if on_event:
+            on_event("llm.prompt.prepared", {"fixed_tokens": fixed_tokens, "context_tokens": len(context_tokens), "context_budget": context_budget, "context_truncated": len(context_tokens) >= context_budget})
         return prefix + safe_context + suffix
 
     def _generation_options(self) -> dict:

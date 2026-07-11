@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import perf_counter
 from src.application.ports import DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
 from src.domain.entities import ChatAnswer, DocumentChunk
 
@@ -11,21 +12,34 @@ class AskLegalQuestion:
         stream, sources = self.execute_stream(question)
         return ChatAnswer("".join(stream), sources)
 
-    def execute_stream(self, question: str):
+    def execute_stream(self, question: str, on_event=None):
+        emit = on_event or (lambda *_: None)
         question = question.strip()
         if not question:
             raise ValueError("Вопрос не может быть пустым")
+        emit("rag.question.validated", {"characters": len(question)})
         search_query = question
         normalized = question.lower()
         if "уволиться" in normalized or "собственн" in normalized:
             search_query += " Расторжение трудового договора по инициативе работника статья 80 увольнение по собственному желанию"
+            emit("rag.query.expanded", {"reason": "синонимы увольнения", "added_characters": len(search_query) - len(question)})
+        started = perf_counter()
+        emit("rag.embedding.started", {"model_input_characters": len(search_query)})
         vector = self._embedder.embed([f"query: {search_query}"])[0]
+        emit("rag.embedding.completed", {"duration_ms": round((perf_counter() - started) * 1000), "dimensions": len(vector)})
+        started = perf_counter()
+        emit("rag.search.started", {"top_k": self._top_k, "indexed_chunks": self._store.count()})
         results = self._store.search(vector, self._top_k, question)
+        emit("rag.search.completed", {
+            "duration_ms": round((perf_counter() - started) * 1000),
+            "results": [{"source": r.chunk.source, "score": round(r.score, 4), "characters": len(r.chunk.text)} for r in results],
+        })
         if not results:
             return iter(["База ТК РФ пока не проиндексирована. Добавьте документы в папку documents."]), ()
         context = "\n\n".join(f"[{i + 1}] {r.chunk.source}\n{r.chunk.text}" for i, r in enumerate(results))
         sources = tuple(dict.fromkeys(r.chunk.source for r in results))
-        return self._llm.stream_answer(question, context), sources
+        emit("rag.context.prepared", {"characters": len(context), "sources": len(sources)})
+        return self._llm.stream_answer(question, context, emit), sources
 
 
 class IndexDocuments:

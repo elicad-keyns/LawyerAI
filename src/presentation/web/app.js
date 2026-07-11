@@ -2,6 +2,17 @@ const $=s=>document.querySelector(s),messages=$('#messages'),input=$('#input'),f
 keyInput.value=localStorage.getItem('accessKey')||'';logsEnabled.checked=localStorage.getItem('logsEnabled')==='true';
 function setLogs(on){localStorage.setItem('logsEnabled',String(on));logPanel.classList.toggle('enabled',on);logPanel.setAttribute('aria-hidden',String(!on));if(on)writeLog('Журнал включён','success')}
 function writeLog(text,type=''){if(!logsEnabled.checked)return;const row=document.createElement('div'),time=document.createElement('time');row.className=`log-entry ${type}`;time.textContent=new Date().toLocaleTimeString('ru-RU');row.append(time,document.createTextNode(text));$('#logEntries').appendChild(row);$('#logEntries').scrollTop=$('#logEntries').scrollHeight}
+const traceNames={
+  'request.accepted':'Запрос принят сервером','request.completed':'Запрос полностью завершён','request.failed':'Запрос завершился ошибкой',
+  'rag.question.validated':'Вопрос проверен','rag.query.expanded':'Поисковый запрос дополнен юридическими синонимами',
+  'rag.embedding.started':'Начато построение эмбеддинга','rag.embedding.completed':'Эмбеддинг построен',
+  'rag.search.started':'Запущен гибридный поиск по индексу','rag.search.completed':'Поиск по индексу завершён',
+  'rag.context.prepared':'RAG-контекст подготовлен','llm.loading.started':'Начата загрузка локальной LLM в память',
+  'llm.loading.completed':'Локальная LLM готова','llm.prompt.prepared':'Промпт и токен-бюджет подготовлены',
+  'llm.generation.started':'Генерация токенов запущена','llm.generation.progress':'Прогресс генерации',
+  'llm.generation.completed':'Генерация токенов завершена'
+};
+function formatTrace(data){const title=traceNames[data.event]||data.event,d=data.details||{};let details=Object.entries(d).map(([k,v])=>`${k}=${typeof v==='object'?JSON.stringify(v):v}`).join(' · ');return `[${data.request_id}] ${title} · +${data.elapsed_ms} мс${details?' · '+details:''}`}
 setLogs(logsEnabled.checked);logsEnabled.onchange=()=>setLogs(logsEnabled.checked);$('#collapseLogs').onclick=()=>logPanel.classList.add('collapsed');$('#expandLogs').onclick=()=>logPanel.classList.remove('collapsed');$('#clearLogs').onclick=()=>{$('#logEntries').replaceChildren();writeLog('Журнал очищен')};
 $('#settingsBtn').onclick=()=>settings.showModal();$('#toggle').onclick=()=>keyInput.type=keyInput.type==='password'?'text':'password';
 $('#saveKey').onclick=async()=>{const status=$('#keyStatus'),key=keyInput.value.trim();status.className='status';status.textContent='Проверяю…';writeLog('Проверка ключа доступа');try{const r=await fetch('/api/auth',{method:'POST',headers:{'X-Access-Key':key}});if(!r.ok)throw new Error((await r.json()).detail);localStorage.setItem('accessKey',key);status.classList.add('ok');status.textContent='Ключ принят';writeLog('Доступ подтверждён','success');setTimeout(()=>settings.close(),500)}catch(e){status.classList.add('bad');status.textContent=e.message||'Не удалось проверить ключ';writeLog(`Ошибка доступа: ${e.message}`,'error')}};
@@ -19,7 +30,7 @@ form.onsubmit=async e=>{
     const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
     while(true){
       const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop();
-      for(const line of lines){if(!line.trim())continue;const event=JSON.parse(line);if(event.type==='token'){fullText+=event.data;answer.textContent=fullText;answer.classList.remove('typing');messages.scrollTop=messages.scrollHeight}else if(event.type==='sources'){sources=event.data}else if(event.type==='error'){throw new Error(event.data)}}
+      for(const line of lines){if(!line.trim())continue;const event=JSON.parse(line);if(event.type==='token'){fullText+=event.data;answer.textContent=fullText;answer.classList.remove('typing');messages.scrollTop=messages.scrollHeight}else if(event.type==='sources'){sources=event.data;writeLog(`Получен список источников: ${sources.length}`,'success')}else if(event.type==='log'){writeLog(formatTrace(event.data),event.data.event.endsWith('failed')?'error':event.data.event.endsWith('completed')?'success':'')}else if(event.type==='heartbeat'){writeLog(`[${event.data.request_id}] Heartbeat Railway · ожидание ${(event.data.elapsed_ms/1000).toFixed(1)} с`)}else if(event.type==='error'){throw new Error(event.data)}}
     }
     if(!fullText)throw new Error('Модель не вернула текст');
     if(sources.length){const sourceEl=document.createElement('small');sourceEl.className='sources';sourceEl.textContent='Источники: '+sources.join(' · ');answer.appendChild(sourceEl)}

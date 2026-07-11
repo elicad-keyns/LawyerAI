@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from typing import Optional
 from src.domain.entities import DocumentChunk, SearchResult
 
 
@@ -12,7 +13,7 @@ class LanguageModelPort(ABC):
     @abstractmethod
     def answer(self, question: str, context: str) -> str: ...
 
-    def stream_answer(self, question: str, context: str):
+    def stream_answer(self, question: str, context: str, on_event: Optional[Callable] = None):
         """Потоковый режим; адаптеры без streaming используют один фрагмент."""
         yield self.answer(question, context)
 

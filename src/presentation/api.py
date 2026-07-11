@@ -4,6 +4,8 @@ import logging
 import queue
 import shutil
 import threading
+import time
+import uuid
 from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -29,6 +31,7 @@ llm = LlamaCppAdapter(
     settings.context,
     settings.max_tokens,
     settings.temperature,
+    settings.batch,
 )
 ask = AskLegalQuestion(embedder, store, llm, settings.top_k)
 indexer = IndexDocuments(LocalDocumentReader(), embedder, store)
@@ -59,25 +62,26 @@ def auth():
 
 @app.post("/api/chat", dependencies=[Depends(authorize)])
 async def chat(body: ChatRequest):
-    try:
-        token_stream, sources = await asyncio.to_thread(ask.execute_stream, body.message)
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-    except Exception as error:
-        logger.exception("Local LLM request failed")
-        message = str(error).strip() or "неизвестная ошибка"
-        raise HTTPException(500, f"Сбой локальной модели ({type(error).__name__}): {message}") from error
+    request_id = uuid.uuid4().hex[:8]
 
     def events():
         output: queue.Queue = queue.Queue()
+        request_started = time.perf_counter()
+
+        def trace(name, details=None):
+            output.put(("log", {"event": name, "details": details or {}, "elapsed_ms": round((time.perf_counter() - request_started) * 1000), "request_id": request_id}))
 
         def produce():
             try:
+                trace("request.accepted", {"characters": len(body.message)})
+                token_stream, sources = ask.execute_stream(body.message, trace)
                 for token in token_stream:
                     output.put(("token", token))
                 output.put(("sources", sources))
+                trace("request.completed", {"duration_ms": round((time.perf_counter() - request_started) * 1000), "sources": len(sources)})
             except Exception as error:
                 logger.exception("Local LLM stream failed")
+                trace("request.failed", {"error_type": type(error).__name__, "message": str(error) or "неизвестная ошибка"})
                 output.put(("error", f"Сбой локальной модели ({type(error).__name__}): {str(error) or 'неизвестная ошибка'}"))
             finally:
                 output.put(("done", None))
@@ -87,7 +91,7 @@ async def chat(body: ChatRequest):
             try:
                 kind, payload = output.get(timeout=10)
             except queue.Empty:
-                yield json.dumps({"type": "heartbeat"}) + "\n"
+                yield json.dumps({"type": "heartbeat", "data": {"elapsed_ms": round((time.perf_counter() - request_started) * 1000), "request_id": request_id}}) + "\n"
                 continue
             if kind == "done":
                 break
