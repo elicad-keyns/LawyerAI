@@ -8,6 +8,10 @@ class AskLegalQuestion:
         self._embedder, self._store, self._llm, self._top_k = embedder, store, llm, top_k
 
     def execute(self, question: str) -> ChatAnswer:
+        stream, sources = self.execute_stream(question)
+        return ChatAnswer("".join(stream), sources)
+
+    def execute_stream(self, question: str):
         question = question.strip()
         if not question:
             raise ValueError("Вопрос не может быть пустым")
@@ -18,10 +22,10 @@ class AskLegalQuestion:
         vector = self._embedder.embed([f"query: {search_query}"])[0]
         results = self._store.search(vector, self._top_k, question)
         if not results:
-            return ChatAnswer("База ТК РФ пока не проиндексирована. Добавьте документы в папку documents.", ())
+            return iter(["База ТК РФ пока не проиндексирована. Добавьте документы в папку documents."]), ()
         context = "\n\n".join(f"[{i + 1}] {r.chunk.source}\n{r.chunk.text}" for i, r in enumerate(results))
-        text = self._llm.answer(question, context)
-        return ChatAnswer(text, tuple(dict.fromkeys(r.chunk.source for r in results)))
+        sources = tuple(dict.fromkeys(r.chunk.source for r in results))
+        return self._llm.stream_answer(question, context), sources
 
 
 class IndexDocuments:

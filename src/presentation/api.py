@@ -1,9 +1,12 @@
 import asyncio
+import json
 import logging
+import queue
 import shutil
+import threading
 from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from src.application.use_cases import AskLegalQuestion, IndexDocuments
@@ -57,14 +60,44 @@ def auth():
 @app.post("/api/chat", dependencies=[Depends(authorize)])
 async def chat(body: ChatRequest):
     try:
-        answer = await asyncio.to_thread(ask.execute, body.message)
-        return {"answer": answer.text, "sources": answer.sources}
+        token_stream, sources = await asyncio.to_thread(ask.execute_stream, body.message)
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     except Exception as error:
         logger.exception("Local LLM request failed")
         message = str(error).strip() or "неизвестная ошибка"
         raise HTTPException(500, f"Сбой локальной модели ({type(error).__name__}): {message}") from error
+
+    def events():
+        output: queue.Queue = queue.Queue()
+
+        def produce():
+            try:
+                for token in token_stream:
+                    output.put(("token", token))
+                output.put(("sources", sources))
+            except Exception as error:
+                logger.exception("Local LLM stream failed")
+                output.put(("error", f"Сбой локальной модели ({type(error).__name__}): {str(error) or 'неизвестная ошибка'}"))
+            finally:
+                output.put(("done", None))
+
+        threading.Thread(target=produce, daemon=True).start()
+        while True:
+            try:
+                kind, payload = output.get(timeout=10)
+            except queue.Empty:
+                yield json.dumps({"type": "heartbeat"}) + "\n"
+                continue
+            if kind == "done":
+                break
+            yield json.dumps({"type": kind, "data": payload}, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/index", dependencies=[Depends(authorize)])

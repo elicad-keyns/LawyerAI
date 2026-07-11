@@ -42,6 +42,18 @@ class LlamaCppAdapter(LanguageModelPort):
         return self._model
 
     def answer(self, question: str, context: str) -> str:
+        result = self._get()(self._prepare_prompt(question, context), **self._generation_options())
+        return self._remove_repetitions(result["choices"][0]["text"])
+
+    def stream_answer(self, question: str, context: str):
+        model = self._get()
+        result = model(self._prepare_prompt(question, context), stream=True, **self._generation_options())
+        for part in result:
+            token = part["choices"][0].get("text", "")
+            if token:
+                yield token
+
+    def _prepare_prompt(self, question: str, context: str) -> str:
         prefix = ("Ты юридический помощник по трудовому праву РФ. Отвечай только по приведённым фрагментам. "
                   "Если данных недостаточно, честно скажи об этом. Пиши кратко, по-русски, указывай номера статей, если они есть. "
                   "Не выдумывай нормы. Не добавляй предупреждений, оговорок и дисклеймеров. Не повторяй предложения и абзацы. "
@@ -57,16 +69,16 @@ class LlamaCppAdapter(LanguageModelPort):
             raise ValueError("LLM_CONTEXT слишком мал для вопроса и MAX_TOKENS")
         context_tokens = model.tokenize(context.encode("utf-8"), add_bos=False)[:context_budget]
         safe_context = model.detokenize(context_tokens).decode("utf-8", errors="ignore")
-        prompt = prefix + safe_context + suffix
-        result = model(
-            prompt,
+        return prefix + safe_context + suffix
+
+    def _generation_options(self) -> dict:
+        return dict(
             max_tokens=self._max_tokens,
             temperature=self._temperature,
             top_p=0.9,
             repeat_penalty=1.18,
             stop=["ВОПРОС:", "ФРАГМЕНТЫ:", "Предупреждение:", "Disclaimer:"],
         )
-        return self._remove_repetitions(result["choices"][0]["text"])
 
     @staticmethod
     def _remove_repetitions(text: str) -> str:

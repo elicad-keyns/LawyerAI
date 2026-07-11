@@ -12,6 +12,10 @@ class LanguageModelPort(ABC):
     @abstractmethod
     def answer(self, question: str, context: str) -> str: ...
 
+    def stream_answer(self, question: str, context: str):
+        """Потоковый режим; адаптеры без streaming используют один фрагмент."""
+        yield self.answer(question, context)
+
 
 class VectorStorePort(ABC):
     @abstractmethod
