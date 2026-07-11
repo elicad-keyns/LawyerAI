@@ -17,7 +17,15 @@ if not runtime_index.exists() and bundled_index.exists():
     runtime_index.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(bundled_index, runtime_index)
 store = JsonVectorStore(str(runtime_index))
-llm = LlamaCppAdapter(settings.model_path, settings.model_repo, settings.model_file, settings.threads, settings.context, settings.max_tokens)
+llm = LlamaCppAdapter(
+    settings.model_path,
+    settings.model_repo,
+    settings.model_file,
+    settings.threads,
+    settings.context,
+    settings.max_tokens,
+    settings.temperature,
+)
 ask = AskLegalQuestion(embedder, store, llm, settings.top_k)
 indexer = IndexDocuments(LocalDocumentReader(), embedder, store)
 app = FastAPI(title="ПравоТруд", docs_url=None, redoc_url=None)

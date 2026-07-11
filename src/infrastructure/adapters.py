@@ -24,9 +24,9 @@ class FastEmbedAdapter(EmbeddingPort):
 
 
 class LlamaCppAdapter(LanguageModelPort):
-    def __init__(self, model_path: str, repo: str, filename: str, threads: int, context: int, max_tokens: int):
+    def __init__(self, model_path: str, repo: str, filename: str, threads: int, context: int, max_tokens: int, temperature: float):
         self._path, self._repo, self._filename = Path(model_path), repo, filename
-        self._threads, self._context, self._max_tokens = threads, context, max_tokens
+        self._threads, self._context, self._max_tokens, self._temperature = threads, context, max_tokens, temperature
         self._model, self._lock = None, Lock()
 
     def _get(self):
@@ -45,7 +45,7 @@ class LlamaCppAdapter(LanguageModelPort):
                   "Если данных недостаточно, честно скажи об этом. Пиши кратко, по-русски, указывай номера статей, если они есть. "
                   "Не выдумывай нормы. Добавь предупреждение, что ответ не заменяет консультацию юриста.\n\n"
                   f"ФРАГМЕНТЫ:\n{context}\n\nВОПРОС: {question}\nОТВЕТ:")
-        result = self._get()(prompt, max_tokens=self._max_tokens, temperature=0.15, top_p=0.9, stop=["ВОПРОС:", "ФРАГМЕНТЫ:"])
+        result = self._get()(prompt, max_tokens=self._max_tokens, temperature=self._temperature, top_p=0.9, stop=["ВОПРОС:", "ФРАГМЕНТЫ:"])
         return result["choices"][0]["text"].strip()
 
 
@@ -88,4 +88,3 @@ class LocalDocumentReader(DocumentReaderPort):
         if file.suffix.lower() in {".txt", ".md"}:
             return file.read_text(encoding="utf-8")
         raise ValueError(f"Неподдерживаемый формат: {file.suffix}. Используйте PDF, TXT или MD")
-

@@ -5,9 +5,15 @@
   <meta name="description" content="Локальный ИИ-помощник по Трудовому кодексу РФ">
   <title>ПравоТруд — помощник по ТК РФ</title>
   <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/logs.css">
 </head>
 <body>
   <main class="shell">
+    <aside id="logPanel" class="logs" aria-label="Журнал работы" aria-hidden="true">
+      <div class="logs-head"><div><span class="logs-dot"></span><strong>Журнал</strong></div><div class="logs-actions"><button id="clearLogs" type="button">Очистить</button><button id="collapseLogs" type="button" aria-label="Свернуть журнал">‹</button></div></div>
+      <div id="logEntries" class="log-entries" aria-live="polite"></div>
+      <button id="expandLogs" class="expand-logs" type="button" aria-label="Раскрыть журнал">›</button>
+    </aside>
     <section class="chat" aria-label="Чат с помощником">
       <header>
         <div class="mark">ПТ</div>
@@ -38,10 +44,10 @@
       <div class="modal-head"><div><h2>Настройки доступа</h2><p>Ключ хранится только в вашем браузере</p></div><button value="cancel" aria-label="Закрыть">×</button></div>
       <label for="key">Ключ доступа</label>
       <div class="key-row"><input id="key" type="password" autocomplete="current-password" placeholder="Введите ключ из Railway"><button id="toggle" type="button" aria-label="Показать ключ">◉</button></div>
+      <label class="switch-row" for="logsEnabled"><span><strong>Показывать журнал</strong><small>События запросов и работы помощника</small></span><span class="switch"><input id="logsEnabled" type="checkbox"><span></span></span></label>
       <p id="keyStatus" class="status"></p>
       <button id="saveKey" type="button" class="primary">Сохранить и проверить</button>
     </form>
   </dialog>
   <script src="/assets/app.js" defer></script>
 </body></html>
-

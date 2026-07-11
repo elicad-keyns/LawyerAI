@@ -13,5 +13,9 @@ class Settings:
     threads: int = int(os.getenv("LLM_THREADS", "4"))
     context: int = int(os.getenv("LLM_CONTEXT", "2048"))
     max_tokens: int = int(os.getenv("MAX_TOKENS", "400"))
+    temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.15"))
     top_k: int = int(os.getenv("TOP_K", "5"))
 
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.temperature <= 2.0:
+            raise ValueError("LLM_TEMPERATURE должна быть в диапазоне от 0.0 до 2.0")
