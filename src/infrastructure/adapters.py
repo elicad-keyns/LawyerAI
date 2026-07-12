@@ -27,7 +27,25 @@ class FastEmbedAdapter(EmbeddingPort):
         return [v.tolist() for v in self._get().embed(list(texts), batch_size=32)]
 
 
-class LlamaCppAdapter(LanguageModelPort, QueryRewriterPort, RerankerPort):
+class FastEmbedReranker(RerankerPort):
+    def __init__(self, model_name: str, cache_dir: Optional[str] = None):
+        self._model_name, self._cache_dir, self._model = model_name, cache_dir, None
+        self._lock = Lock()
+
+    def _get(self):
+        with self._lock:
+            if self._model is None:
+                from fastembed.rerank.cross_encoder import TextCrossEncoder
+                self._model = TextCrossEncoder(model_name=self._model_name, cache_dir=self._cache_dir)
+        return self._model
+
+    def rerank(self, question: str, candidates, limit: int) -> list[str]:
+        scores = list(self._get().rerank(question, [chunk.text for chunk in candidates]))
+        ranked = sorted(zip(candidates, scores), key=lambda item: float(item[1]), reverse=True)
+        return [chunk.id for chunk, _ in ranked[:limit]]
+
+
+class LlamaCppAdapter(LanguageModelPort, QueryRewriterPort):
     def __init__(self, model_path: str, repo: str, filename: str, threads: int, context: int, max_tokens: int, temperature: float, batch: int = 512):
         self._path, self._repo, self._filename = Path(model_path), repo, filename
         self._threads, self._context, self._max_tokens, self._temperature, self._batch = threads, context, max_tokens, temperature, batch
@@ -79,28 +97,6 @@ class LlamaCppAdapter(LanguageModelPort, QueryRewriterPort, RerankerPort):
             raise ValueError("query rewriter returned CJK text")
         return rewritten
 
-    def rerank(self, question: str, candidates, limit: int) -> list[str]:
-        rows = "\n".join(f"ID={chunk.id}: {chunk.text[:320]}" for chunk in candidates)
-        prompt = (
-            "<|im_start|>system\nТы ранжируешь фрагменты Трудового кодекса РФ по релевантности вопросу. "
-            "Учитывай роли и направление действия: работник увольняется сам или работодатель увольняет работника. "
-            "Если пользователь не указал специальную профессию, должность, организацию или условия труда, предпочитай общие нормы, "
-            "а не статьи для отдельных категорий работников. Не выбирай специальную статью только из-за совпадения слова. "
-            "Выбери только фрагменты, которые непосредственно помогают ответить. "
-            f"Верни одной строкой не более {limit} идентификаторов ID через запятую, без объяснений.<|im_end|>\n"
-            f"<|im_start|>user\nВопрос: {question}\n\nКандидаты:\n{rows}<|im_end|>\n<|im_start|>assistant\n"
-        )
-        result = self._get()(
-            prompt,
-            max_tokens=48,
-            temperature=0.0,
-            top_p=1.0,
-            repeat_penalty=1.05,
-            stop=["<|im_end|>", "<|im_start|>", "\n"],
-        )
-        valid = {chunk.id for chunk in candidates}
-        ids = [value for value in re.findall(r"\d+", result["choices"][0]["text"]) if value in valid]
-        return list(dict.fromkeys(ids))[:limit]
 
     def stream_answer(self, question: str, context: str, on_event=None):
         emit = on_event or (lambda *_: None)

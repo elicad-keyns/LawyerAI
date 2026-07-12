@@ -13,10 +13,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from src.application.use_cases import AskLegalQuestion, IndexDocuments
 from src.config import Settings
-from src.infrastructure.adapters import FastEmbedAdapter, JsonVectorStore, LlamaCppAdapter, LocalDocumentReader
+from src.infrastructure.adapters import FastEmbedAdapter, FastEmbedReranker, JsonVectorStore, LlamaCppAdapter, LocalDocumentReader
 
 settings = Settings()
 embedder = FastEmbedAdapter(settings.embedding_model, settings.embedding_cache_dir)
+reranker = FastEmbedReranker(settings.reranker_model, settings.reranker_cache_dir)
 runtime_index = Path(settings.data_dir) / "index" / "chunks.json"
 bundled_index = Path("artifacts/index/chunks.json")
 if bundled_index.exists():
@@ -44,7 +45,7 @@ ask = AskLegalQuestion(
     settings.top_k,
     store,
     llm if settings.enable_query_rewrite else None,
-    llm,
+    reranker,
 )
 indexer = IndexDocuments(LocalDocumentReader(), embedder, store)
 app = FastAPI(title="ПравоТруд", docs_url=None, redoc_url=None)

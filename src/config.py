@@ -11,6 +11,8 @@ class Settings:
     model_path: str = os.getenv("MODEL_PATH", "data/models/qwen2.5-1.5b-instruct-q4_k_m.gguf")
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     embedding_cache_dir: str = os.getenv("EMBEDDING_CACHE_DIR", "data/models/fastembed")
+    reranker_model: str = os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v2-base-multilingual")
+    reranker_cache_dir: str = os.getenv("RERANKER_CACHE_DIR", "data/models/reranker")
     threads: int = int(os.getenv("LLM_THREADS", "8"))
     context: int = int(os.getenv("LLM_CONTEXT", "1536"))
     batch: int = int(os.getenv("LLM_BATCH", "512"))
