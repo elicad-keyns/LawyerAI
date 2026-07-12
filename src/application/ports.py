@@ -23,6 +23,11 @@ class QueryRewriterPort(ABC):
     def rewrite(self, question: str) -> str: ...
 
 
+class RerankerPort(ABC):
+    @abstractmethod
+    def rerank(self, question: str, candidates, limit: int) -> list[str]: ...
+
+
 class VectorStorePort(ABC):
     @abstractmethod
     def replace(self, chunks: Iterable[DocumentChunk]) -> int: ...

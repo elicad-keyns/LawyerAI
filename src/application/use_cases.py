@@ -1,15 +1,16 @@
 from pathlib import Path
 import re
 from time import perf_counter
-from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, QueryRewriterPort, VectorStorePort
+from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, QueryRewriterPort, RerankerPort, VectorStorePort
 from src.domain.entities import ChatAnswer, DocumentChunk
 
 
 class AskLegalQuestion:
-    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5, articles: ArticleRepositoryPort = None, rewriter: QueryRewriterPort = None):
+    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5, articles: ArticleRepositoryPort = None, rewriter: QueryRewriterPort = None, reranker: RerankerPort = None):
         self._embedder, self._store, self._llm, self._top_k = embedder, store, llm, top_k
         self._articles = articles
         self._rewriter = rewriter
+        self._reranker = reranker
 
     def execute(self, question: str) -> ChatAnswer:
         stream, sources = self.execute_stream(question)
@@ -60,13 +61,29 @@ class AskLegalQuestion:
         vector = self._embedder.embed([search_query])[0]
         emit("rag.embedding.completed", {"duration_ms": round((perf_counter() - started) * 1000), "dimensions": len(vector)})
         started = perf_counter()
-        emit("rag.search.started", {"top_k": self._top_k, "indexed_chunks": self._store.count()})
+        candidate_limit = max(self._top_k * 3, 12) if self._reranker else self._top_k
+        emit("rag.search.started", {"top_k": self._top_k, "candidate_limit": candidate_limit, "indexed_chunks": self._store.count()})
         exact_article = article_numbers[0] if len(set(article_numbers)) == 1 else ""
-        results = self._store.search(vector, self._top_k, f"{question} {search_query}", exact_article)
+        results = self._store.search(vector, candidate_limit, f"{question} {search_query}", exact_article)
         emit("rag.search.completed", {
             "duration_ms": round((perf_counter() - started) * 1000),
             "results": [{"source": r.chunk.source, "score": round(r.score, 4), "characters": len(r.chunk.text)} for r in results],
         })
+        if self._reranker and len(results) > self._top_k:
+            started = perf_counter()
+            emit("rag.rerank.started", {"candidates": len(results), "limit": self._top_k})
+            try:
+                ordered_ids = self._reranker.rerank(question, [result.chunk for result in results], self._top_k)
+                by_id = {result.chunk.id: result for result in results}
+                reranked = [by_id[chunk_id] for chunk_id in ordered_ids if chunk_id in by_id]
+                reranked.extend(result for result in results if result.chunk.id not in {item.chunk.id for item in reranked})
+                results = reranked[:self._top_k]
+                emit("rag.rerank.completed", {"duration_ms": round((perf_counter() - started) * 1000), "selected": [result.chunk.id for result in results]})
+            except Exception as error:
+                results = results[:self._top_k]
+                emit("rag.rerank.fallback", {"reason": type(error).__name__, "message": str(error)})
+        else:
+            results = results[:self._top_k]
         if not results:
             return iter(["База ТК РФ пока не проиндексирована. Добавьте документы в папку documents."]), ()
         context = "\n\n".join(f"[{i + 1}] {r.chunk.source}\n{r.chunk.text}" for i, r in enumerate(results))

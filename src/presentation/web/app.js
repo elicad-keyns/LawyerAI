@@ -8,6 +8,7 @@ const traceNames={
   'rag.rewrite.started':'LLM начала преобразование вопроса в юридический поисковый запрос','rag.rewrite.completed':'Юридический поисковый запрос подготовлен','rag.rewrite.fallback':'Query rewriting не сработал, используется исходный вопрос',
   'rag.embedding.started':'Начато построение эмбеддинга','rag.embedding.completed':'Эмбеддинг построен',
   'rag.search.started':'Запущен гибридный поиск по индексу','rag.search.completed':'Поиск по индексу завершён',
+  'rag.rerank.started':'LLM начала переранжирование найденных кандидатов','rag.rerank.completed':'LLM выбрала финальные RAG-фрагменты','rag.rerank.fallback':'Reranking не сработал, используется исходный рейтинг',
   'rag.context.prepared':'RAG-контекст подготовлен','llm.loading.started':'Начата загрузка локальной LLM в память',
   'article.lookup.started':'Запущено точное извлечение статьи','article.lookup.completed':'Статья извлечена дословно без LLM','article.lookup.missed':'Точный текст статьи не найден, используется RAG',
   'llm.loading.completed':'Локальная LLM готова','llm.prompt.prepared':'Промпт и токен-бюджет подготовлены',
