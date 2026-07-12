@@ -4,7 +4,8 @@ from src.domain.entities import DocumentChunk, SearchResult
 
 
 class Embed(EmbeddingPort):
-    def embed(self, texts): return [[1.0, 0.0] for _ in texts]
+    inputs=[]
+    def embed(self, texts): self.inputs.extend(texts); return [[1.0, 0.0] for _ in texts]
 class Llm(LanguageModelPort):
     def answer(self, question, context): return f"Ответ: {question} | {context}"
 class Store(VectorStorePort):
@@ -27,3 +28,9 @@ def test_rag_flow():
 def test_empty_index_message():
     answer=AskLegalQuestion(Embed(), Store(), Llm()).execute("Вопрос")
     assert "не проиндексирована" in answer.text
+
+
+def test_embedding_text_has_no_e5_prefix_for_minilm():
+    embedder=Embed()
+    AskLegalQuestion(embedder, Store(), Llm()).execute("Как уйти с работы?")
+    assert embedder.inputs == ["Как уйти с работы?"]

@@ -34,7 +34,8 @@ class AskLegalQuestion:
         search_query = question
         started = perf_counter()
         emit("rag.embedding.started", {"model_input_characters": len(search_query)})
-        vector = self._embedder.embed([f"query: {search_query}"])[0]
+        # paraphrase-multilingual-MiniLM кодирует обычный текст без E5-префиксов
+        vector = self._embedder.embed([search_query])[0]
         emit("rag.embedding.completed", {"duration_ms": round((perf_counter() - started) * 1000), "dimensions": len(vector)})
         started = perf_counter()
         emit("rag.search.started", {"top_k": self._top_k, "indexed_chunks": self._store.count()})
@@ -70,7 +71,7 @@ class IndexDocuments:
                 raw.append((f"{Path(path).name}, фрагмент {n + 1}", part))
         if not raw:
             return self._store.replace([])
-        vectors = self._embedder.embed([f"passage: {text}" for _, text in raw])
+        vectors = self._embedder.embed([text for _, text in raw])
         chunks = [DocumentChunk(str(i), source, text, tuple(vector)) for i, ((source, text), vector) in enumerate(zip(raw, vectors))]
         return self._store.replace(chunks)
 

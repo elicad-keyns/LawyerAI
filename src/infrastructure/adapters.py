@@ -192,7 +192,9 @@ class JsonVectorStore(VectorStorePort, ArticleRepositoryPort):
 
         def hybrid_score(chunk: DocumentChunk, index: int) -> float:
             score = cosine(vector, chunk.embedding)
-            score += 0.65 * bm25_scores[index] / max_bm25
+            # BM25 уточняет точные термины, но не должен перебивать
+            # мультиязычный семантический поиск для перефразированных вопросов.
+            score += 0.25 * bm25_scores[index] / max_bm25
             if article_heading_pattern and article_heading_pattern.search(chunk.text):
                 score += 10.0
             elif article_pattern and article_pattern.search(chunk.text):

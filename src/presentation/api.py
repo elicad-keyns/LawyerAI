@@ -19,9 +19,13 @@ settings = Settings()
 embedder = FastEmbedAdapter(settings.embedding_model, settings.embedding_cache_dir)
 runtime_index = Path(settings.data_dir) / "index" / "chunks.json"
 bundled_index = Path("artifacts/index/chunks.json")
-if not runtime_index.exists() and bundled_index.exists():
+if bundled_index.exists():
     runtime_index.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(bundled_index, runtime_index)
+    # Репозиторий содержит канонический предварительно собранный индекс.
+    # При каждом деплое обновляем Volume, чтобы он не продолжал использовать
+    # старые embedding-векторы после изменения модели или индексации.
+    if not runtime_index.exists() or runtime_index.read_bytes() != bundled_index.read_bytes():
+        shutil.copyfile(bundled_index, runtime_index)
 store = JsonVectorStore(str(runtime_index))
 llm = LlamaCppAdapter(
     settings.model_path,
