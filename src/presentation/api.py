@@ -46,6 +46,7 @@ ask = AskLegalQuestion(
     store,
     llm if settings.enable_query_rewrite else None,
     reranker,
+    settings.min_relevance_score,
 )
 indexer = IndexDocuments(LocalDocumentReader(), embedder, store)
 app = FastAPI(title="ПравоТруд", docs_url=None, redoc_url=None)

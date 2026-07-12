@@ -128,7 +128,9 @@ class LlamaCppAdapter(LanguageModelPort, QueryRewriterPort):
                   "Не придумывай факты. Не пиши слова «ОТВЕТ», «ПРОБЛЕМА», предупреждения или дисклеймеры. "
                   "Не повторяй текст и не используй китайские иероглифы. Если спрашивают конкретную статью, используй прежде всего фрагмент, начинающийся с её заголовка, "
                   "и не подменяй содержание случайными ссылками на эту статью. Называй номер статьи только тогда, когда он явно присутствует в контексте. "
-                  "Не перечисляй статьи, которых нет в контексте. Дай прямой краткий ответ простым языком.")
+                  "Не перечисляй статьи, которых нет в контексте. Если вопрос общий, предпочитай общие нормы и игнорируй нормы для специальных "
+                  "категорий работников, когда такая категория не указана пользователем. Не называй статью основанием, если её текст прямо этого не устанавливает. "
+                  "Если контекст не содержит ответа, прямо скажи, что данных недостаточно. Дай прямой краткий ответ простым языком.")
         prefix = f"<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\nКонтекст из ТК РФ:\n"
         suffix = f"\n\nВопрос пользователя: {question}<|im_end|>\n<|im_start|>assistant\n"
         model = self._get()
@@ -266,6 +268,29 @@ class JsonVectorStore(VectorStorePort, ArticleRepositoryPort):
         heading = re.compile(rf"(?:^|\s)(Статья\s+{re.escape(number)}(?!\d|\.\d)\s*\.)")
         next_heading = re.compile(r"\sСтатья\s+\d+(?:\.\d+)?\s*\.")
         for source, chunks in sources.items():
+            # Новый структурный индекс: каждое продолжение длинной статьи
+            # начинается с повторённого заголовка и маркера «…».
+            structural_heading = re.compile(rf"^Статья\s+{re.escape(number)}(?!\d|\.\d)\s*\.")
+            start_index = next((i for i, chunk in enumerate(chunks) if structural_heading.search(chunk.text)), None)
+            if start_index is not None:
+                selected: list[str] = []
+                for chunk in chunks[start_index:]:
+                    any_heading = re.match(r"^Статья\s+(\d+(?:\.\d+)?)\s*\.", chunk.text)
+                    if not any_heading or any_heading.group(1) != number:
+                        break
+                    content = chunk.text
+                    if selected and " … " in content:
+                        content = content.split(" … ", 1)[1]
+                    selected.append(content)
+                if selected:
+                    article = selected[0]
+                    for content in selected[1:]:
+                        max_overlap = min(700, len(article), len(content))
+                        overlap = next((size for size in range(max_overlap, 30, -1) if article.endswith(content[:size])), 0)
+                        article += content[overlap:]
+                    return source, article.strip()
+
+            # Совместимость со старым fixed-chunk индексом.
             document = self._join_overlapping_chunks([chunk.text for chunk in chunks])
             match = heading.search(document)
             if not match:

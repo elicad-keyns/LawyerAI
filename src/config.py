@@ -20,6 +20,7 @@ class Settings:
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.15"))
     top_k: int = int(os.getenv("TOP_K", "4"))
     enable_query_rewrite: bool = os.getenv("ENABLE_QUERY_REWRITE", "false").lower() in {"1", "true", "yes", "on"}
+    min_relevance_score: float = float(os.getenv("MIN_RELEVANCE_SCORE", "0.62"))
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.temperature <= 2.0:

@@ -6,11 +6,12 @@ from src.domain.entities import ChatAnswer, DocumentChunk
 
 
 class AskLegalQuestion:
-    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5, articles: ArticleRepositoryPort = None, rewriter: QueryRewriterPort = None, reranker: RerankerPort = None):
+    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5, articles: ArticleRepositoryPort = None, rewriter: QueryRewriterPort = None, reranker: RerankerPort = None, min_relevance_score: float = 0.62):
         self._embedder, self._store, self._llm, self._top_k = embedder, store, llm, top_k
         self._articles = articles
         self._rewriter = rewriter
         self._reranker = reranker
+        self._min_relevance_score = min_relevance_score
 
     def execute(self, question: str) -> ChatAnswer:
         stream, sources = self.execute_stream(question)
@@ -61,7 +62,7 @@ class AskLegalQuestion:
         vector = self._embedder.embed([search_query])[0]
         emit("rag.embedding.completed", {"duration_ms": round((perf_counter() - started) * 1000), "dimensions": len(vector)})
         started = perf_counter()
-        candidate_limit = max(self._top_k * 3, 12) if self._reranker else self._top_k
+        candidate_limit = max(self._top_k * 6, 24) if self._reranker else self._top_k
         emit("rag.search.started", {"top_k": self._top_k, "candidate_limit": candidate_limit, "indexed_chunks": self._store.count()})
         exact_article = article_numbers[0] if len(set(article_numbers)) == 1 else ""
         results = self._store.search(vector, candidate_limit, f"{question} {search_query}", exact_article)
@@ -69,7 +70,22 @@ class AskLegalQuestion:
             "duration_ms": round((perf_counter() - started) * 1000),
             "results": [{"source": r.chunk.source, "score": round(r.score, 4), "characters": len(r.chunk.text)} for r in results],
         })
+        if not exact_article and results and results[0].score < self._min_relevance_score:
+            emit("rag.relevance.rejected", {"top_score": round(results[0].score, 4), "threshold": self._min_relevance_score})
+            return iter(["В загруженном Трудовом кодексе РФ не найдено достаточно релевантных норм для ответа на этот вопрос."]), ()
         if self._reranker and len(results) > self._top_k:
+            diverse_results = []
+            article_counts = {}
+            for result in results:
+                match = re.match(r"Статья\s+(\d+(?:\.\d+)?)\s*\.", result.chunk.text)
+                key = match.group(1) if match else result.chunk.id
+                if article_counts.get(key, 0) >= 2:
+                    continue
+                article_counts[key] = article_counts.get(key, 0) + 1
+                diverse_results.append(result)
+                if len(diverse_results) == 12:
+                    break
+            results = diverse_results
             started = perf_counter()
             emit("rag.rerank.started", {"candidates": len(results), "limit": self._top_k})
             try:

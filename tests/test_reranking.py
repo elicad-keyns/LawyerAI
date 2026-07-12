@@ -18,3 +18,19 @@ class Reranker:
 def test_llm_reranker_selects_from_broad_candidates():
     answer = AskLegalQuestion(Embed(), CandidateStore(), Llm(), top_k=3, reranker=Reranker()).execute("Вопрос")
     assert answer.sources
+
+
+def test_candidate_diversity_limits_repeated_article_chunks():
+    chunks = [DocumentChunk(str(i), "tk.pdf", "Статья 349.1. Продолжение", (1.0, 0.0)) for i in range(6)]
+    chunks += [DocumentChunk("81", "tk.pdf", "Статья 81. Общая норма", (1.0, 0.0))]
+    store = CandidateStore()
+    store.chunks = chunks
+    class CaptureReranker:
+        seen = []
+        def rerank(self, question, candidates, limit):
+            self.seen = candidates
+            return [chunk.id for chunk in candidates[:limit]]
+    reranker = CaptureReranker()
+    AskLegalQuestion(Embed(), store, Llm(), top_k=3, reranker=reranker).execute("Вопрос")
+    assert sum(chunk.text.startswith("Статья 349.1") for chunk in reranker.seen) <= 2
+    assert any(chunk.text.startswith("Статья 81") for chunk in reranker.seen)
