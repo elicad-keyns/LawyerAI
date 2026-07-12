@@ -1,14 +1,15 @@
 from pathlib import Path
 import re
 from time import perf_counter
-from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
+from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, QueryRewriterPort, VectorStorePort
 from src.domain.entities import ChatAnswer, DocumentChunk
 
 
 class AskLegalQuestion:
-    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5, articles: ArticleRepositoryPort = None):
+    def __init__(self, embedder: EmbeddingPort, store: VectorStorePort, llm: LanguageModelPort, top_k: int = 5, articles: ArticleRepositoryPort = None, rewriter: QueryRewriterPort = None):
         self._embedder, self._store, self._llm, self._top_k = embedder, store, llm, top_k
         self._articles = articles
+        self._rewriter = rewriter
 
     def execute(self, question: str) -> ChatAnswer:
         stream, sources = self.execute_stream(question)
@@ -32,6 +33,18 @@ class AskLegalQuestion:
                 return iter([formatted]), (source,)
             emit("article.lookup.missed", {"number": number})
         search_query = question
+        if self._rewriter:
+            started = perf_counter()
+            emit("rag.rewrite.started", {"original_characters": len(question)})
+            try:
+                candidate = self._rewriter.rewrite(question).strip()
+                if candidate and len(candidate) <= 500:
+                    search_query = candidate
+                    emit("rag.rewrite.completed", {"duration_ms": round((perf_counter() - started) * 1000), "query": search_query})
+                else:
+                    emit("rag.rewrite.fallback", {"reason": "empty_or_too_long"})
+            except Exception as error:
+                emit("rag.rewrite.fallback", {"reason": type(error).__name__, "message": str(error)})
         started = perf_counter()
         emit("rag.embedding.started", {"model_input_characters": len(search_query)})
         # paraphrase-multilingual-MiniLM кодирует обычный текст без E5-префиксов
@@ -39,7 +52,7 @@ class AskLegalQuestion:
         emit("rag.embedding.completed", {"duration_ms": round((perf_counter() - started) * 1000), "dimensions": len(vector)})
         started = perf_counter()
         emit("rag.search.started", {"top_k": self._top_k, "indexed_chunks": self._store.count()})
-        results = self._store.search(vector, self._top_k, search_query)
+        results = self._store.search(vector, self._top_k, f"{question} {search_query}")
         emit("rag.search.completed", {
             "duration_ms": round((perf_counter() - started) * 1000),
             "results": [{"source": r.chunk.source, "score": round(r.score, 4), "characters": len(r.chunk.text)} for r in results],

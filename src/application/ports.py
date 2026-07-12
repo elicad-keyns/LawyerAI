@@ -18,6 +18,11 @@ class LanguageModelPort(ABC):
         yield self.answer(question, context)
 
 
+class QueryRewriterPort(ABC):
+    @abstractmethod
+    def rewrite(self, question: str) -> str: ...
+
+
 class VectorStorePort(ABC):
     @abstractmethod
     def replace(self, chunks: Iterable[DocumentChunk]) -> int: ...

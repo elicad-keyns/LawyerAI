@@ -4,7 +4,8 @@ function setLogs(on){localStorage.setItem('logsEnabled',String(on));logPanel.cla
 function writeLog(text,type=''){if(!logsEnabled.checked)return;const row=document.createElement('div'),time=document.createElement('time');row.className=`log-entry ${type}`;time.textContent=new Date().toLocaleTimeString('ru-RU');row.append(time,document.createTextNode(text));$('#logEntries').appendChild(row);$('#logEntries').scrollTop=$('#logEntries').scrollHeight}
 const traceNames={
   'request.accepted':'Запрос принят сервером','request.completed':'Запрос полностью завершён','request.failed':'Запрос завершился ошибкой',
-  'rag.question.validated':'Вопрос проверен','rag.query.expanded':'Поисковый запрос дополнен юридическими синонимами',
+  'rag.question.validated':'Вопрос проверен',
+  'rag.rewrite.started':'LLM начала преобразование вопроса в юридический поисковый запрос','rag.rewrite.completed':'Юридический поисковый запрос подготовлен','rag.rewrite.fallback':'Query rewriting не сработал, используется исходный вопрос',
   'rag.embedding.started':'Начато построение эмбеддинга','rag.embedding.completed':'Эмбеддинг построен',
   'rag.search.started':'Запущен гибридный поиск по индексу','rag.search.completed':'Поиск по индексу завершён',
   'rag.context.prepared':'RAG-контекст подготовлен','llm.loading.started':'Начата загрузка локальной LLM в память',

@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Lock
 from collections.abc import Iterable, Sequence
 from typing import Optional
-from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, VectorStorePort
+from src.application.ports import ArticleRepositoryPort, DocumentReaderPort, EmbeddingPort, LanguageModelPort, QueryRewriterPort, VectorStorePort
 from src.domain.entities import DocumentChunk, SearchResult
 
 
@@ -27,7 +27,7 @@ class FastEmbedAdapter(EmbeddingPort):
         return [v.tolist() for v in self._get().embed(list(texts), batch_size=16)]
 
 
-class LlamaCppAdapter(LanguageModelPort):
+class LlamaCppAdapter(LanguageModelPort, QueryRewriterPort):
     def __init__(self, model_path: str, repo: str, filename: str, threads: int, context: int, max_tokens: int, temperature: float, batch: int = 512):
         self._path, self._repo, self._filename = Path(model_path), repo, filename
         self._threads, self._context, self._max_tokens, self._temperature, self._batch = threads, context, max_tokens, temperature, batch
@@ -56,6 +56,27 @@ class LlamaCppAdapter(LanguageModelPort):
     def answer(self, question: str, context: str) -> str:
         result = self._get()(self._prepare_prompt(question, context), **self._generation_options())
         return self._remove_repetitions(result["choices"][0]["text"])
+
+    def rewrite(self, question: str) -> str:
+        """Универсально переводит бытовой вопрос в терминологию документа."""
+        prompt = (
+            "<|im_start|>system\nТы преобразуешь вопрос пользователя в короткий поисковый запрос для поиска по Трудовому кодексу РФ. "
+            "Используй официальную юридическую терминологию. Не отвечай на вопрос, не объясняй, не составляй списки. "
+            "Не придумывай номера статей, если пользователь их не указал. Верни только одну поисковую фразу на русском языке.<|im_end|>\n"
+            f"<|im_start|>user\n{question}<|im_end|>\n<|im_start|>assistant\n"
+        )
+        result = self._get()(
+            prompt,
+            max_tokens=64,
+            temperature=0.0,
+            top_p=1.0,
+            repeat_penalty=1.1,
+            stop=["<|im_end|>", "<|im_start|>", "\n"],
+        )
+        rewritten = result["choices"][0]["text"].strip().strip('"“”')
+        if re.search(r"[\u3400-\u9fff]", rewritten):
+            raise ValueError("query rewriter returned CJK text")
+        return rewritten
 
     def stream_answer(self, question: str, context: str, on_event=None):
         emit = on_event or (lambda *_: None)
