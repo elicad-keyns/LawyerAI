@@ -24,7 +24,7 @@ class FastEmbedAdapter(EmbeddingPort):
         return self._model
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        return [v.tolist() for v in self._get().embed(list(texts), batch_size=16)]
+        return [v.tolist() for v in self._get().embed(list(texts), batch_size=32)]
 
 
 class LlamaCppAdapter(LanguageModelPort, QueryRewriterPort):
@@ -62,7 +62,8 @@ class LlamaCppAdapter(LanguageModelPort, QueryRewriterPort):
         prompt = (
             "<|im_start|>system\nТы преобразуешь вопрос пользователя в короткий поисковый запрос для поиска по Трудовому кодексу РФ. "
             "Используй официальную юридическую терминологию. Не отвечай на вопрос, не объясняй, не составляй списки. "
-            "Не придумывай номера статей, если пользователь их не указал. Верни только одну поисковую фразу на русском языке.<|im_end|>\n"
+            "Не придумывай номера статей, если пользователь их не указал. Обязательно сохрани роли и направление действия: "
+            "кто действует и в отношении кого. Верни только одну поисковую фразу на русском языке.<|im_end|>\n"
             f"<|im_start|>user\n{question}<|im_end|>\n<|im_start|>assistant\n"
         )
         result = self._get()(

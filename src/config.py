@@ -16,7 +16,7 @@ class Settings:
     batch: int = int(os.getenv("LLM_BATCH", "512"))
     max_tokens: int = int(os.getenv("MAX_TOKENS", "220"))
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.15"))
-    top_k: int = int(os.getenv("TOP_K", "5"))
+    top_k: int = int(os.getenv("TOP_K", "4"))
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.temperature <= 2.0:

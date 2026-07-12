@@ -82,7 +82,7 @@ class AskLegalQuestion:
 
 
 class IndexDocuments:
-    def __init__(self, reader: DocumentReaderPort, embedder: EmbeddingPort, store: VectorStorePort, chunk_size: int = 900, overlap: int = 140):
+    def __init__(self, reader: DocumentReaderPort, embedder: EmbeddingPort, store: VectorStorePort, chunk_size: int = 2000, overlap: int = 500):
         self._reader, self._embedder, self._store = reader, embedder, store
         self._chunk_size, self._overlap = chunk_size, overlap
 
@@ -100,13 +100,36 @@ class IndexDocuments:
 
     def _split(self, text: str) -> list[str]:
         text = " ".join(text.split())
+        headings = list(re.finditer(r"(?:^|\s)(Статья\s+\d+(?:\.\d+)?\s*\.)", text))
+        if not headings:
+            return self._split_section(text)
+
+        parts: list[str] = []
+        if headings[0].start(1) > 80:
+            parts.extend(self._split_section(text[:headings[0].start(1)]))
+        for index, heading in enumerate(headings):
+            start = heading.start(1)
+            end = headings[index + 1].start(1) if index + 1 < len(headings) else len(text)
+            section = text[start:end].strip()
+            parts.extend(self._split_section(section, section[:220]))
+        return [part for part in parts if len(part) > 80]
+
+    def _split_section(self, text: str, repeated_header: str = "") -> list[str]:
+        if len(text) <= self._chunk_size:
+            return [text.strip()] if len(text.strip()) > 80 else []
         parts, start = [], 0
+        header_limit = min(240, max(40, self._chunk_size // 4))
+        repeated_header = repeated_header[:header_limit].strip()
         while start < len(text):
-            end = min(start + self._chunk_size, len(text))
+            prefix = "" if start == 0 or not repeated_header else repeated_header + " … "
+            available = self._chunk_size - len(prefix)
+            end = min(start + available, len(text))
             if end < len(text):
-                boundary = text.rfind(". ", start + self._chunk_size // 2, end)
+                boundary = text.rfind(". ", start + available // 2, end)
                 if boundary > start:
                     end = boundary + 1
-            parts.append(text[start:end].strip())
+            parts.append((prefix + text[start:end].strip()).strip())
+            if end >= len(text):
+                break
             start = max(end - self._overlap, start + 1)
-        return [p for p in parts if len(p) > 80]
+        return parts
