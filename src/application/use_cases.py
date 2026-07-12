@@ -38,6 +38,15 @@ class AskLegalQuestion:
             emit("rag.rewrite.started", {"original_characters": len(question)})
             try:
                 candidate = self._rewriter.rewrite(question).strip()
+                # LLM не имеет права активировать exact-article режим. Если
+                # номера не было в исходном вопросе, удаляем придуманные ею
+                # конструкции «статья N» из поискового запроса.
+                if not article_numbers:
+                    candidate = re.sub(
+                        r"(?i)стат(?:ья|ьи|ью|ье|ьей|ьёй|ей)\s*[№N]?\s*\d+(?:\.\d+)?",
+                        "",
+                        candidate,
+                    ).strip(" ,.;:-")
                 if candidate and len(candidate) <= 500:
                     search_query = candidate
                     emit("rag.rewrite.completed", {"duration_ms": round((perf_counter() - started) * 1000), "query": search_query})
@@ -52,7 +61,8 @@ class AskLegalQuestion:
         emit("rag.embedding.completed", {"duration_ms": round((perf_counter() - started) * 1000), "dimensions": len(vector)})
         started = perf_counter()
         emit("rag.search.started", {"top_k": self._top_k, "indexed_chunks": self._store.count()})
-        results = self._store.search(vector, self._top_k, f"{question} {search_query}")
+        exact_article = article_numbers[0] if len(set(article_numbers)) == 1 else ""
+        results = self._store.search(vector, self._top_k, f"{question} {search_query}", exact_article)
         emit("rag.search.completed", {
             "duration_ms": round((perf_counter() - started) * 1000),
             "results": [{"source": r.chunk.source, "score": round(r.score, 4), "characters": len(r.chunk.text)} for r in results],

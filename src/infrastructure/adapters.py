@@ -167,7 +167,7 @@ class JsonVectorStore(VectorStorePort, ArticleRepositoryPort):
             self._path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             return len(self._chunks)
 
-    def search(self, vector: Sequence[float], limit: int, query: str = "") -> list[SearchResult]:
+    def search(self, vector: Sequence[float], limit: int, query: str = "", exact_article: str = "") -> list[SearchResult]:
         def cosine(a, b):
             dot = sum(x * y for x, y in zip(a, b))
             norm = math.sqrt(sum(x*x for x in a) * sum(y*y for y in b))
@@ -176,8 +176,7 @@ class JsonVectorStore(VectorStorePort, ArticleRepositoryPort):
         # Номера статей — идентификаторы, а не семантика. Эмбеддинги могут
         # считать статьи 77 и 87 похожими, поэтому точный номер получает
         # приоритет над векторной близостью.
-        article_match = re.search(r"(?i)стат(?:ья|ьи|ью|ье|ьей|ьёй|ей)\s*[№N]?\s*(\d+(?:\.\d+)?)", query)
-        article = article_match.group(1) if article_match else ""
+        article = exact_article
         article_pattern = re.compile(rf"(?i)стат(?:ья|ьи|ью|ье|ей)\s*[№N]?\s*{re.escape(article)}(?!\d|\.\d)") if article else None
         # В PDF заголовок часто идёт сразу после названия главы без точки:
         # «Глава 13... Статья 77». Заглавная «Статья» отличает заголовок от

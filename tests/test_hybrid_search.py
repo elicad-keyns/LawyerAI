@@ -8,7 +8,7 @@ def test_exact_article_number_beats_semantic_similarity(tmp_path):
         DocumentChunk("wrong", "tk.pdf", "Статья 87. Хранение персональных данных", (1.0, 0.0)),
         DocumentChunk("right", "tk.pdf", "Статья 77. Общие основания прекращения трудового договора", (0.0, 1.0)),
     ])
-    results = store.search((1.0, 0.0), 2, "Статья 77 ТК РФ")
+    results = store.search((1.0, 0.0), 2, "Статья 77 ТК РФ", "77")
     assert results[0].chunk.id == "right"
 
 
@@ -18,7 +18,7 @@ def test_article_heading_beats_cross_reference(tmp_path):
         DocumentChunk("reference", "tk.pdf", "Увольнение осуществляется по основаниям статьи 77 настоящего Кодекса.", (1.0, 0.0)),
         DocumentChunk("heading", "tk.pdf", "Статья 77. Общие основания прекращения трудового договора", (0.0, 1.0)),
     ])
-    assert store.search((1.0, 0.0), 2, "Что означает статья 77?")[0].chunk.id == "heading"
+    assert store.search((1.0, 0.0), 2, "Что означает статья 77?", "77")[0].chunk.id == "heading"
 
 
 def test_instrumental_case_and_article_continuation(tmp_path):
@@ -28,7 +28,7 @@ def test_instrumental_case_and_article_continuation(tmp_path):
         DocumentChunk("start", "tk.pdf", "Статья 1. Цели и задачи трудового законодательства", (0.0, 1.0)),
         DocumentChunk("continuation", "tk.pdf", "Целями трудового законодательства являются установление государственных гарантий.", (0.0, 1.0)),
     ])
-    results = store.search((1.0, 0.0), 2, "Что установлено статьёй 1 ТК РФ?")
+    results = store.search((1.0, 0.0), 2, "Что установлено статьёй 1 ТК РФ?", "1")
     assert [result.chunk.id for result in results] == ["start", "continuation"]
 
 

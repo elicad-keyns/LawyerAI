@@ -11,7 +11,7 @@ class Llm(LanguageModelPort):
 class Store(VectorStorePort):
     chunks=[]
     def replace(self, chunks): self.chunks=list(chunks); return len(self.chunks)
-    def search(self, vector, limit, query=""): return [SearchResult(self.chunks[0], 1.0)] if self.chunks else []
+    def search(self, vector, limit, query="", exact_article=""): return [SearchResult(self.chunks[0], 1.0)] if self.chunks else []
     def count(self): return len(self.chunks)
 class Reader(DocumentReaderPort):
     def read(self, path): return "Статья 1. " + "Трудовое право регулирует отношения. " * 50
